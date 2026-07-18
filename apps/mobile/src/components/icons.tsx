@@ -47,6 +47,7 @@ export const Moon = createIcon("moon");
 export const Merge = createIcon("git-merge");
 export const Minus = createIcon("minus");
 export const MoreHorizontal = createIcon("more-horizontal");
+export const MoreVertical = createIcon("more-vertical");
 export const Music = createIcon("music");
 export const Pencil = createIcon("edit-2");
 export const Pin = createIcon("bookmark");

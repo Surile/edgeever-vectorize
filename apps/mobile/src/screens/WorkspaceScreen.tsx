@@ -36,6 +36,7 @@ import {
   Minus,
   Moon,
   MoreHorizontal,
+  MoreVertical,
   Music,
   Pencil,
   Pin,
@@ -344,6 +345,7 @@ export const WorkspaceScreen = () => {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedMemoIds, setSelectedMemoIds] = useState<Set<string>>(() => new Set());
   const [selectionMoveOpen, setSelectionMoveOpen] = useState(false);
+  const [selectionMoreOpen, setSelectionMoreOpen] = useState(false);
   const [syncQueueSummary, setSyncQueueSummary] = useState<MobileSyncQueueSummary>(() => emptyMobileSyncQueueSummary());
   const [syncQueueMessage, setSyncQueueMessage] = useState("");
   const [isSyncingQueue, setIsSyncingQueue] = useState(false);
@@ -452,6 +454,7 @@ export const WorkspaceScreen = () => {
         setSelectionMode(false);
         setSelectedMemoIds(new Set());
         setSelectionMoveOpen(false);
+        setSelectionMoreOpen(false);
         return true;
       }
       if (activeView !== "notes") {
@@ -522,6 +525,7 @@ export const WorkspaceScreen = () => {
     setSelectionMode(false);
     setSelectedMemoIds(new Set());
     setSelectionMoveOpen(false);
+    setSelectionMoreOpen(false);
   };
 
   const toggleVisibleSelection = () => {
@@ -1100,6 +1104,7 @@ export const WorkspaceScreen = () => {
           memos={memos}
           notebooks={notebooks}
           onCreate={() => setCreateOpen(true)}
+          onClearSelection={clearSelection}
           onFilterModeChange={setMemoFilterMode}
           onOpenActions={() => setNotesActionsOpen(true)}
           onOpenNotebookPicker={() => setNotebookPickerOpen(true)}
@@ -1287,10 +1292,13 @@ export const WorkspaceScreen = () => {
       /> : null}
 
       {notesActionsOpen ? <NotesActionsModal
+        bottomOffset={52 + safeAreaInsets.bottom}
         memoListDensity={memoListDensity}
         memoSortMode={memoSortMode}
         memoView={memoView}
         isEmptyingTrash={emptyTrashMutation.isPending}
+        listDescription={`${memosQuery.data?.pages[0]?.totalCount ?? memos.length} 条笔记`}
+        listTitle={memoView === "trash" ? "回收站" : activeNotebook?.name ?? "全部笔记"}
         onClose={() => setNotesActionsOpen(false)}
         onEnterSelection={() => {
           setNotesActionsOpen(false);
@@ -1318,6 +1326,32 @@ export const WorkspaceScreen = () => {
           setNotesActionsOpen(false);
           setMemoView(memoView === "trash" ? "notebook" : "trash");
         }}
+        selectionMode={selectionMode}
+        visible
+      /> : null}
+
+      {selectionMoreOpen ? <SelectionMoreModal
+        bottomOffset={58 + safeAreaInsets.bottom}
+        canMerge={memoView !== "trash" && selectedMemoIds.size >= 2 && !mergeMemosMutation.isPending}
+        canPin={memoView !== "trash" && selectedMemoIds.size > 0 && !pinMemosMutation.isPending}
+        canToggleVisibleSelection={canToggleVisibleSelection}
+        onClear={clearSelection}
+        onClose={() => setSelectionMoreOpen(false)}
+        onMerge={() => {
+          setSelectionMoreOpen(false);
+          handleMergeSelection();
+        }}
+        onPin={() => {
+          setSelectionMoreOpen(false);
+          pinMemosMutation.mutate({ memoIds: selectedMemoIdList, isPinned: nextSelectionPinValue });
+        }}
+        onToggleVisibleSelection={() => {
+          setSelectionMoreOpen(false);
+          toggleVisibleSelection();
+        }}
+        pinLabel={nextSelectionPinValue ? "置顶" : "取消置顶"}
+        selectedCount={selectedMemoIds.size}
+        selectionToggleLabel={allVisibleMemosSelected ? "全不选当前列表" : "全选当前列表"}
         visible
       /> : null}
 
@@ -1349,25 +1383,18 @@ export const WorkspaceScreen = () => {
 
       {activeView === "notes" && selectionMode ? (
         <SelectionActionBar
-          bottomOffset={52 + safeAreaInsets.bottom}
-          canMerge={memoView !== "trash" && selectedMemoIds.size >= 2}
+          bottomInset={safeAreaInsets.bottom}
           canMove={memoView !== "trash" && selectedMemoIds.size > 0}
           isBusy={deleteMemosMutation.isPending || moveMemosMutation.isPending || pinMemosMutation.isPending || mergeMemosMutation.isPending}
           isTrashView={memoView === "trash"}
-          onToggleVisibleSelection={toggleVisibleSelection}
-          onClear={clearSelection}
           onDelete={handleDeleteSelection}
-          onMerge={handleMergeSelection}
+          onMore={() => setSelectionMoreOpen(true)}
           onMove={() => setSelectionMoveOpen(true)}
-          onPin={() => pinMemosMutation.mutate({ memoIds: selectedMemoIdList, isPinned: nextSelectionPinValue })}
-          pinLabel={nextSelectionPinValue ? "置顶" : "取消置顶"}
-          selectionToggleDisabled={!canToggleVisibleSelection}
-          selectionToggleLabel={allVisibleMemosSelected ? "取消当前列表" : "选择当前列表"}
           selectedCount={selectedMemoIds.size}
         />
       ) : null}
 
-      {activeView !== "settings" ? (
+      {activeView !== "settings" && !selectionMode ? (
         <View
           style={[styles.bottomNav, { height: 52 + safeAreaInsets.bottom, paddingBottom: safeAreaInsets.bottom }]}
         >
@@ -1411,6 +1438,7 @@ const NotesView = ({
   memos,
   notebooks,
   onCreate,
+  onClearSelection,
   onFilterModeChange,
   onOpenActions,
   onOpenNotebookPicker,
@@ -1435,6 +1463,7 @@ const NotesView = ({
   memos: MemoSummary[];
   notebooks: Notebook[];
   onCreate: () => void;
+  onClearSelection: () => void;
   onFilterModeChange: (filterMode: MemoFilterMode) => void;
   onOpenActions: () => void;
   onOpenNotebookPicker: () => void;
@@ -1450,6 +1479,15 @@ const NotesView = ({
   return (
     <View style={styles.viewBody}>
       <View style={styles.mobileListHeader}>
+        {selectionMode ? (
+          <View style={styles.mobileSelectionHeader}>
+            <Pressable accessibilityLabel="取消选择" accessibilityRole="button" onPress={onClearSelection} style={styles.mobileSelectionClose}>
+              <X color="#64748b" size={19} />
+            </Pressable>
+            <Text style={styles.mobileSelectionTitle}>{selectedMemoIds.size > 0 ? `已选择 ${selectedMemoIds.size} 条` : "选择笔记"}</Text>
+            <View style={styles.iconButtonPlaceholder} />
+          </View>
+        ) : null}
         <View style={styles.mobileListTitleRow}>
           <Pressable
             accessibilityLabel={memoView === "trash" ? "返回笔记列表" : "选择笔记本"}
@@ -1463,7 +1501,7 @@ const NotesView = ({
             </Text>
             {memoView === "notebook" ? <ChevronDown color="#64748b" size={16} /> : null}
           </Pressable>
-          <Pressable accessibilityLabel="笔记列表操作" accessibilityRole="button" onPress={onOpenActions} style={styles.mobileMoreButton}>
+          <Pressable accessibilityLabel={selectionMode ? "批量操作" : "笔记列表操作"} accessibilityRole="button" onPress={onOpenActions} style={styles.mobileMoreButton}>
             <MoreHorizontal color="#475569" size={20} />
           </Pressable>
         </View>
@@ -1520,7 +1558,10 @@ const NotesView = ({
 };
 
 const NotesActionsModal = ({
+  bottomOffset,
   isEmptyingTrash,
+  listDescription,
+  listTitle,
   memoListDensity,
   memoSortMode,
   memoView,
@@ -1533,9 +1574,13 @@ const NotesActionsModal = ({
   onOpenTags,
   onSortModeChange,
   onToggleTrash,
+  selectionMode,
   visible,
 }: {
+  bottomOffset: number;
   isEmptyingTrash: boolean;
+  listDescription: string;
+  listTitle: string;
   memoListDensity: MobileMemoListDensity;
   memoSortMode: MemoSortMode;
   memoView: MemoView;
@@ -1548,39 +1593,70 @@ const NotesActionsModal = ({
   onOpenTags: () => void;
   onSortModeChange: (sortMode: MemoSortMode) => void;
   onToggleTrash: () => void;
+  selectionMode: boolean;
   visible: boolean;
 }) => (
   <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
-    <Pressable onPress={onClose} style={styles.actionSheetBackdrop}>
-      <Pressable style={styles.actionSheet}>
+    <Pressable onPress={onClose} style={[styles.actionSheetBackdrop, { paddingBottom: bottomOffset }]}>
+      <Pressable style={styles.listActionSheet}>
         <View style={styles.actionSheetHandle} />
-        <Text style={styles.actionSheetTitle}>列表操作</Text>
-        <ActionSheetItem icon={<CheckSquare color="#0f172a" size={18} />} label="选择笔记" onPress={onEnterSelection} />
-        <Text style={styles.actionSheetSectionTitle}>显示模式</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <OptionPill active={memoListDensity === "preview"} label="预览" onPress={() => onMemoListDensityChange("preview")} />
-          <OptionPill active={memoListDensity === "compact"} label="紧凑" onPress={() => onMemoListDensityChange("compact")} />
-        </ScrollView>
-        <Text style={styles.actionSheetSectionTitle}>排序方式</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <OptionPill active={memoSortMode === "updated-desc"} label="最近更新" onPress={() => onSortModeChange("updated-desc")} />
-          <OptionPill active={memoSortMode === "created-desc"} label="创建时间" onPress={() => onSortModeChange("created-desc")} />
-          <OptionPill active={memoSortMode === "title-asc"} label="标题 A-Z" onPress={() => onSortModeChange("title-asc")} />
-        </ScrollView>
-        <ActionSheetItem icon={<Tag color="#0f172a" size={18} />} label="标签管理" onPress={onOpenTags} />
-        <ActionSheetItem icon={<Archive color="#0f172a" size={18} />} label="资源库" onPress={onOpenResources} />
-        {memoView === "trash" ? (
-          <>
-            <ActionSheetItem icon={<BookOpen color="#0f172a" size={18} />} label="返回笔记列表" onPress={onToggleTrash} />
+        <View style={styles.listActionSheetHeader}>
+          <View style={styles.listActionSheetHeaderText}>
+            <Text numberOfLines={1} style={styles.actionSheetTitle}>列表选项</Text>
+            <Text numberOfLines={1} style={styles.actionSheetSubtitle}>{listTitle} · {listDescription}</Text>
+          </View>
+          <Pressable accessibilityLabel="关闭" accessibilityRole="button" onPress={onClose} style={styles.sheetCloseButton}>
+            <X color="#0f172a" size={18} />
+          </Pressable>
+        </View>
+        <ScrollView contentContainerStyle={styles.listActionSheetContent} style={styles.listActionSheetScroll}>
+          {!selectionMode ? (
+            <>
+              <ActionSheetItem icon={<CheckSquare color="#0f172a" size={18} />} label="选择笔记" onPress={onEnterSelection} />
+              <View style={styles.listActionDivider} />
+            </>
+          ) : null}
+          <Text style={styles.actionSheetSectionTitle}>显示方式</Text>
+          <SheetOptionRow
+            active={memoListDensity === "preview"}
+            icon={<FileText color={memoListDensity === "preview" ? "#10b981" : "#64748b"} size={18} />}
+            label="预览列表"
+            onPress={() => onMemoListDensityChange("preview")}
+          />
+          <SheetOptionRow
+            active={memoListDensity === "compact"}
+            icon={<List color={memoListDensity === "compact" ? "#10b981" : "#64748b"} size={18} />}
+            label="紧凑列表"
+            onPress={() => onMemoListDensityChange("compact")}
+          />
+          <View style={styles.listActionDivider} />
+          <Text style={styles.actionSheetSectionTitle}>排序方式</Text>
+          <SheetOptionRow active={memoSortMode === "updated-desc"} label="最近更新" onPress={() => onSortModeChange("updated-desc")} />
+          <SheetOptionRow active={memoSortMode === "created-desc"} label="创建时间" onPress={() => onSortModeChange("created-desc")} />
+          <SheetOptionRow active={memoSortMode === "title-asc"} label="标题 A-Z" onPress={() => onSortModeChange("title-asc")} />
+          <View style={styles.listActionDivider} />
+          <ActionSheetItem icon={<Tag color="#0f172a" size={18} />} label="标签" onPress={onOpenTags} />
+          <ActionSheetItem icon={<Archive color="#0f172a" size={18} />} label="附件" onPress={onOpenResources} />
+          {memoView === "trash" ? (
             <ActionSheetItem danger disabled={isEmptyingTrash} icon={<Trash2 color="#b91c1c" size={18} />} label={isEmptyingTrash ? "清空中" : "清空回收站"} onPress={onEmptyTrash} />
-          </>
-        ) : (
-          <ActionSheetItem icon={<Trash2 color="#b91c1c" size={18} />} label="回收站" onPress={onToggleTrash} />
-        )}
-        <ActionSheetItem icon={<KeyRound color="#0f172a" size={18} />} label="MCP Token" onPress={onOpenApiTokens} />
+          ) : (
+            <ActionSheetItem icon={<Trash2 color="#0f172a" size={18} />} label="回收站" onPress={onToggleTrash} />
+          )}
+          <ActionSheetItem icon={<KeyRound color="#0f172a" size={18} />} label="MCP Token" onPress={onOpenApiTokens} />
+        </ScrollView>
       </Pressable>
     </Pressable>
   </Modal>
+);
+
+const SheetOptionRow = ({ active, icon, label, onPress }: { active: boolean; icon?: ReactNode; label: string; onPress: () => void }) => (
+  <Pressable accessibilityRole="radio" accessibilityState={{ checked: active }} onPress={onPress} style={[styles.sheetOptionRow, active && styles.sheetOptionRowActive]}>
+    {icon ? <View style={styles.sheetOptionIcon}>{icon}</View> : null}
+    <Text style={[styles.sheetOptionLabel, active && styles.sheetOptionLabelActive]}>{label}</Text>
+    <View style={[styles.sheetOptionCheck, !active && styles.sheetOptionCheckHidden]}>
+      <Check color="#ffffff" size={13} />
+    </View>
+  </Pressable>
 );
 
 const NotebookPickerModal = ({
@@ -5289,57 +5365,82 @@ const MoveSelectionModal = ({
 };
 
 const SelectionActionBar = ({
-  bottomOffset,
-  canMerge,
+  bottomInset,
   canMove,
   isBusy,
   isTrashView,
-  onClear,
   onDelete,
-  onMerge,
+  onMore,
   onMove,
-  onPin,
-  onToggleVisibleSelection,
-  pinLabel,
-  selectionToggleDisabled,
-  selectionToggleLabel,
   selectedCount,
 }: {
-  bottomOffset: number;
-  canMerge: boolean;
+  bottomInset: number;
   canMove: boolean;
   isBusy: boolean;
   isTrashView: boolean;
-  onClear: () => void;
   onDelete: () => void;
-  onMerge: () => void;
+  onMore: () => void;
   onMove: () => void;
+  selectedCount: number;
+}) => (
+  <View accessibilityLabel="批量操作" style={[styles.selectionBar, { paddingBottom: Math.max(2, bottomInset) }]}>
+    <View style={styles.selectionActions}>
+      <SelectionAction disabled={isBusy || !canMove} icon={<Folder color={canMove ? "#0f172a" : "#cbd5e1"} size={20} />} label="移动" onPress={onMove} />
+      <SelectionAction danger disabled={isBusy || selectedCount === 0} icon={<Trash2 color={selectedCount === 0 ? "#cbd5e1" : "#b91c1c"} size={20} />} label={isTrashView ? "永久删除" : "删除"} onPress={onDelete} />
+      <SelectionAction disabled={isBusy} icon={<MoreVertical color="#0f172a" size={20} />} label="更多" onPress={onMore} />
+    </View>
+  </View>
+);
+
+const SelectionMoreModal = ({
+  bottomOffset,
+  canMerge,
+  canPin,
+  canToggleVisibleSelection,
+  onClear,
+  onClose,
+  onMerge,
+  onPin,
+  onToggleVisibleSelection,
+  pinLabel,
+  selectedCount,
+  selectionToggleLabel,
+  visible,
+}: {
+  bottomOffset: number;
+  canMerge: boolean;
+  canPin: boolean;
+  canToggleVisibleSelection: boolean;
+  onClear: () => void;
+  onClose: () => void;
+  onMerge: () => void;
   onPin: () => void;
   onToggleVisibleSelection: () => void;
   pinLabel: string;
-  selectionToggleDisabled: boolean;
-  selectionToggleLabel: string;
   selectedCount: number;
+  selectionToggleLabel: string;
+  visible: boolean;
 }) => (
-  <View style={[styles.selectionBar, { bottom: bottomOffset }]}>
-    <View style={styles.selectionBarHeader}>
-      <Text style={styles.selectionCount}>已选 {selectedCount} 条</Text>
-      <View style={styles.selectionHeaderActions}>
-        <Pressable disabled={selectionToggleDisabled} onPress={onToggleVisibleSelection}>
-          <Text style={[styles.selectionClear, selectionToggleDisabled && styles.selectionClearDisabled]}>{selectionToggleLabel}</Text>
-        </Pressable>
-        <Pressable onPress={onClear}>
-          <Text style={styles.selectionClear}>取消</Text>
-        </Pressable>
-      </View>
-    </View>
-    <View style={styles.selectionActions}>
-      <SelectionAction disabled={isBusy || !canMove} icon={<Folder color={canMove ? "#0f172a" : "#cbd5e1"} size={18} />} label="移动" onPress={onMove} />
-      <SelectionAction disabled={isBusy || isTrashView || selectedCount === 0} icon={<Pin color={isTrashView || selectedCount === 0 ? "#cbd5e1" : "#0f172a"} size={18} />} label={pinLabel} onPress={onPin} />
-      <SelectionAction disabled={isBusy || !canMerge} icon={<Merge color={canMerge ? "#0f172a" : "#cbd5e1"} size={18} />} label="合并" onPress={onMerge} />
-      <SelectionAction danger disabled={isBusy || selectedCount === 0} icon={<Trash2 color={selectedCount === 0 ? "#cbd5e1" : "#b91c1c"} size={18} />} label={isTrashView ? "永久删除" : "删除"} onPress={onDelete} />
-    </View>
-  </View>
+  <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
+    <Pressable onPress={onClose} style={[styles.actionSheetBackdrop, { paddingBottom: bottomOffset }]}>
+      <Pressable style={styles.selectionMoreSheet}>
+        <View style={styles.actionSheetHandle} />
+        <View style={styles.listActionSheetHeader}>
+          <View style={styles.listActionSheetHeaderText}>
+            <Text style={styles.actionSheetTitle}>批量操作</Text>
+            <Text style={styles.actionSheetSubtitle}>{selectedCount > 0 ? `已选择 ${selectedCount} 条` : "选择笔记"}</Text>
+          </View>
+          <Pressable accessibilityLabel="关闭" accessibilityRole="button" onPress={onClose} style={styles.sheetCloseButton}>
+            <X color="#0f172a" size={18} />
+          </Pressable>
+        </View>
+        <ActionSheetItem disabled={!canToggleVisibleSelection} icon={<CheckSquare color={canToggleVisibleSelection ? "#0f172a" : "#cbd5e1"} size={18} />} label={selectionToggleLabel} onPress={onToggleVisibleSelection} />
+        <ActionSheetItem disabled={!canMerge} icon={<Merge color={canMerge ? "#0f172a" : "#cbd5e1"} size={18} />} label="合并笔记" onPress={onMerge} />
+        <ActionSheetItem disabled={!canPin} icon={<Sparkles color={canPin ? "#0f172a" : "#cbd5e1"} size={18} />} label={pinLabel} onPress={onPin} />
+        <ActionSheetItem icon={<X color="#0f172a" size={18} />} label="取消选择" onPress={onClear} />
+      </Pressable>
+    </Pressable>
+  </Modal>
 );
 
 const SelectionAction = ({
@@ -6818,6 +6919,24 @@ const baseWorkspaceStyles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 8,
   },
+  mobileSelectionHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    minHeight: 44,
+  },
+  mobileSelectionTitle: {
+    color: "#0f172a",
+    flex: 1,
+    fontSize: 17,
+    fontWeight: "800",
+    paddingHorizontal: 8,
+  },
+  mobileSelectionClose: {
+    alignItems: "center",
+    height: 38,
+    justifyContent: "center",
+    width: 38,
+  },
   mobileListTitleRow: {
     alignItems: "center",
     flexDirection: "row",
@@ -7110,7 +7229,7 @@ const baseWorkspaceStyles = StyleSheet.create({
   selectionIndicator: {
     alignItems: "center",
     borderColor: "#cbd5e1",
-    borderRadius: 6,
+    borderRadius: 10,
     borderWidth: 1,
     height: 20,
     justifyContent: "center",
@@ -7687,6 +7806,59 @@ const baseWorkspaceStyles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 10,
   },
+  listActionSheet: {
+    backgroundColor: "#ffffff",
+    borderRadius: 10,
+    marginHorizontal: 8,
+    maxHeight: "76%",
+    overflow: "hidden",
+    paddingBottom: 8,
+    paddingTop: 8,
+  },
+  selectionMoreSheet: {
+    backgroundColor: "#ffffff",
+    borderRadius: 10,
+    gap: 0,
+    marginHorizontal: 8,
+    overflow: "hidden",
+    paddingBottom: 8,
+    paddingTop: 8,
+  },
+  listActionSheetHeader: {
+    alignItems: "center",
+    borderBottomColor: "#e2e8f0",
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    minHeight: 52,
+    paddingHorizontal: 12,
+  },
+  listActionSheetHeaderText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  sheetCloseButton: {
+    alignItems: "center",
+    borderRadius: 8,
+    height: 38,
+    justifyContent: "center",
+    width: 38,
+  },
+  listActionSheetScroll: {
+    flexShrink: 1,
+  },
+  listActionSheetContent: {
+    padding: 8,
+  },
+  actionSheetSubtitle: {
+    color: "#64748b",
+    fontSize: 12,
+    marginTop: 2,
+  },
+  listActionDivider: {
+    backgroundColor: "#f1f5f9",
+    height: 1,
+    marginVertical: 8,
+  },
   notebookPickerSheet: {
     maxHeight: "82%",
     paddingHorizontal: 0,
@@ -7725,14 +7897,13 @@ const baseWorkspaceStyles = StyleSheet.create({
     color: "#64748b",
     fontSize: 12,
     fontWeight: "800",
-    paddingTop: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   actionSheetItem: {
     alignItems: "center",
-    backgroundColor: "#f8fafc",
-    borderColor: "#e2e8f0",
-    borderRadius: 8,
-    borderWidth: 1,
+    backgroundColor: "transparent",
+    borderRadius: 7,
     flexDirection: "row",
     gap: 10,
     minHeight: 48,
@@ -7745,6 +7916,42 @@ const baseWorkspaceStyles = StyleSheet.create({
   },
   actionSheetItemTextDanger: {
     color: "#b91c1c",
+  },
+  sheetOptionRow: {
+    alignItems: "center",
+    borderRadius: 7,
+    flexDirection: "row",
+    gap: 10,
+    minHeight: 44,
+    paddingHorizontal: 12,
+  },
+  sheetOptionRowActive: {
+    backgroundColor: "#ecfdf5",
+  },
+  sheetOptionIcon: {
+    alignItems: "center",
+    justifyContent: "center",
+    width: 20,
+  },
+  sheetOptionLabel: {
+    color: "#0f172a",
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  sheetOptionLabelActive: {
+    color: "#047857",
+  },
+  sheetOptionCheck: {
+    alignItems: "center",
+    backgroundColor: "#10b981",
+    borderRadius: 9,
+    height: 18,
+    justifyContent: "center",
+    width: 18,
+  },
+  sheetOptionCheckHidden: {
+    opacity: 0,
   },
   insertTextSheet: {
     backgroundColor: "#ffffff",
@@ -8356,53 +8563,25 @@ const baseWorkspaceStyles = StyleSheet.create({
   },
   selectionBar: {
     backgroundColor: "#ffffff",
-    borderColor: "#e2e8f0",
+    borderTopColor: "#e2e8f0",
     borderTopWidth: 1,
+    bottom: 0,
     left: 0,
-    paddingHorizontal: 14,
-    paddingTop: 10,
-    paddingBottom: 12,
+    paddingHorizontal: 32,
+    paddingTop: 4,
     position: "absolute",
     right: 0,
   },
-  selectionBarHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 8,
-  },
-  selectionCount: {
-    color: "#0f172a",
-    fontSize: 13,
-    fontWeight: "800",
-  },
-  selectionHeaderActions: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 12,
-  },
-  selectionClear: {
-    color: "#2563eb",
-    fontSize: 13,
-    fontWeight: "800",
-  },
-  selectionClearDisabled: {
-    color: "#cbd5e1",
-  },
   selectionActions: {
     flexDirection: "row",
-    gap: 8,
+    justifyContent: "space-between",
   },
   selectionAction: {
     alignItems: "center",
-    backgroundColor: "#f8fafc",
-    borderColor: "#e2e8f0",
-    borderRadius: 8,
-    borderWidth: 1,
     flex: 1,
     gap: 4,
     justifyContent: "center",
-    minHeight: 54,
+    minHeight: 56,
   },
   selectionActionText: {
     color: "#0f172a",
