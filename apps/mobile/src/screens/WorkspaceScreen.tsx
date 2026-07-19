@@ -345,6 +345,7 @@ export const WorkspaceScreen = () => {
   const [notebookManagerOpen, setNotebookManagerOpen] = useState(false);
   const [tagsManagerOpen, setTagsManagerOpen] = useState(false);
   const [resourcesOpen, setResourcesOpen] = useState(false);
+  const [resourceTargetMemo, setResourceTargetMemo] = useState<MemoDetail | null>(null);
   const [apiTokensOpen, setApiTokensOpen] = useState(false);
   const [syncQueueOpen, setSyncQueueOpen] = useState(false);
   const [revisionMemo, setRevisionMemo] = useState<MemoDetail | null>(null);
@@ -604,6 +605,38 @@ export const WorkspaceScreen = () => {
   const allVisibleMemosSelected = canToggleVisibleSelection && visibleMemos.every((memo) => selectedMemoIds.has(memo.id));
   const nextSelectionPinValue = selectedMemos.some((memo) => !memo.isPinned);
   const canCreateMemo = memoView !== "trash" && notebooks.length > 0;
+
+  useEffect(() => {
+    setResourceTargetMemo(null);
+  }, [dataScope]);
+
+  useEffect(() => {
+    if (selectedMemo && !selectedMemo.isDeleted) {
+      setResourceTargetMemo(selectedMemo);
+    }
+  }, [selectedMemo]);
+
+  useEffect(() => {
+    if (!resourcesOpen || selectedMemo || resourceTargetMemo) {
+      return;
+    }
+
+    const fallbackMemo = visibleMemos.find((memo) => !memo.isDeleted);
+    if (!fallbackMemo) {
+      return;
+    }
+
+    let mounted = true;
+    void getLocalMemo(dataScope, fallbackMemo.id).then((memo) => {
+      if (mounted && memo && !memo.isDeleted) {
+        setResourceTargetMemo(memo);
+      }
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, [dataScope, resourceTargetMemo, resourcesOpen, selectedMemo, visibleMemos]);
 
   useEffect(() => {
     clearSelection();
@@ -1248,7 +1281,7 @@ export const WorkspaceScreen = () => {
         visible
       /> : null}
       {tagsManagerOpen ? <TagsManagerModal onClose={() => setTagsManagerOpen(false)} visible /> : null}
-      {resourcesOpen ? <ResourcesModal activeMemo={selectedMemo} imageCompressionEnabled={imageCompressionEnabled} onClose={() => setResourcesOpen(false)} visible /> : null}
+      {resourcesOpen ? <ResourcesModal activeMemo={selectedMemo ?? resourceTargetMemo} imageCompressionEnabled={imageCompressionEnabled} onClose={() => setResourcesOpen(false)} visible /> : null}
       {apiTokensOpen ? <ApiTokensModal baseUrl={session?.baseUrl ?? ""} onClose={() => setApiTokensOpen(false)} visible /> : null}
       {syncQueueOpen ? <SyncQueueModal
         onClose={() => setSyncQueueOpen(false)}
@@ -3903,33 +3936,18 @@ const ResourcesModal = ({
       }
 
       const resources = [];
-      let nextMarkdown = activeMemo.contentMarkdown || activeMemo.contentText || "";
 
       for (const [index, asset] of assets.entries()) {
-        setUploadProgress(`上传 ${index + 1}/${assets.length}：${asset.name || "文件"}`);
+        setUploadProgress(`正在上传第 ${index + 1}/${assets.length} 个文件...`);
         const form = new FormData();
         const uploadAsset = await prepareUploadAsset(asset, imageCompressionEnabled);
         form.append("file", uploadAsset as unknown as Blob);
 
         const { resource } = await client.uploadMemoResource(activeMemo.id, form);
         resources.push(resource);
-        nextMarkdown = appendResourceMarkdown(nextMarkdown, {
-          filename: resource.filename || uploadAsset.name || asset.name || "upload",
-          kind: resource.kind,
-          url: resource.url,
-        });
       }
 
-      setUploadProgress("写入笔记正文");
-      const { editSession } = await client.createMemoEditSession(activeMemo.id);
-      const { memo } = await client.updateMemo(activeMemo.id, {
-        contentMarkdown: nextMarkdown,
-        expectedRevision: activeMemo.revision,
-        expectedContentHash: activeMemo.contentHash,
-        editSessionId: editSession.id,
-      });
-
-      return { memo, resources };
+      return { resources };
     },
     onSuccess: async (result) => {
       if (!result) {
@@ -3939,11 +3957,9 @@ const ResourcesModal = ({
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["mobile", "resources"] }),
         queryClient.invalidateQueries({ queryKey: ["mobile", "memo"] }),
-        queryClient.invalidateQueries({ queryKey: ["mobile", "memos"] }),
       ]);
-      queryClient.setQueryData(["mobile", "memo", "notebook", result.memo.id], { memo: result.memo });
       setFilter(result.resources.some((resource) => resource.kind === "image") ? "image" : "all");
-      setUploadProgress(`已上传 ${result.resources.length} 个文件`);
+      setUploadProgress("上传成功！");
     },
     onError: () => {
       setUploadProgress("");
@@ -3987,10 +4003,10 @@ const ResourcesModal = ({
   const imageResources = filteredResources.filter((resource) => resource.kind === "image");
   const previewIndex = previewResource ? imageResources.findIndex((resource) => resource.id === previewResource.id) : -1;
   const uploadTargetHint = !activeMemo
-    ? "打开一条笔记后可作为资源上传目标"
+    ? "提示：在右侧编辑器中打开一篇笔记，即可在此处拖放或上传新文件。"
     : activeMemo.isDeleted
       ? "已删除笔记不能上传附件，请先恢复笔记"
-      : `当前笔记：${activeMemo.title?.trim() || activeMemo.excerpt || DEFAULT_MEMO_TITLE}；上传后会写入正文`;
+      : `当前关联笔记：《${activeMemo.title?.trim() || activeMemo.excerpt || DEFAULT_MEMO_TITLE}》`;
   const handlePreviewStep = (direction: -1 | 1) => {
     if (previewIndex < 0 || imageResources.length < 2) {
       return;
@@ -4045,7 +4061,7 @@ const ResourcesModal = ({
                 onChangeText={setSearchText}
                 placeholder="搜索附件名或来源笔记..."
                 placeholderTextColor="#94a3b8"
-                style={styles.searchInput}
+                style={[styles.searchInput, styles.assetsSearchInput]}
                 value={searchText}
               />
               {searchText ? (
@@ -4063,22 +4079,27 @@ const ResourcesModal = ({
               </Pressable>
             </View>
           </View>
+        </View>
 
-          <Pressable
-            disabled={!activeMemo || activeMemo.isDeleted || uploadResourceMutation.isPending}
-            onPress={() => uploadResourceMutation.mutate()}
-            style={[styles.uploadButton, (!activeMemo || activeMemo.isDeleted || uploadResourceMutation.isPending) && styles.buttonDisabled]}
-          >
-            {uploadResourceMutation.isPending ? <ActivityIndicator color="#ffffff" /> : <Upload color="#ffffff" size={18} />}
-            <Text style={styles.uploadButtonText}>{uploadResourceMutation.isPending ? uploadProgress || "上传中" : "上传附件"}</Text>
-          </Pressable>
-          {uploadProgress ? <Text style={styles.assetsHint}>{uploadProgress}</Text> : null}
-
-          <Text style={styles.assetsHint}>{uploadTargetHint}</Text>
-          {uploadResourceMutation.error ? (
-            <Text style={styles.errorText}>{uploadResourceMutation.error instanceof Error ? uploadResourceMutation.error.message : "上传失败"}</Text>
+        <View style={[styles.assetsUploadBanner, !activeMemo && styles.assetsUploadBannerInactive]}>
+          <Text numberOfLines={2} style={[styles.assetsUploadHint, !activeMemo && styles.assetsUploadHintInactive]}>
+            {translate(uploadProgress || uploadTargetHint)}
+          </Text>
+          {activeMemo ? (
+            <Pressable
+              accessibilityRole="button"
+              disabled={activeMemo.isDeleted || uploadResourceMutation.isPending}
+              onPress={() => uploadResourceMutation.mutate()}
+              style={[styles.assetsUploadButton, (activeMemo.isDeleted || uploadResourceMutation.isPending) && styles.buttonDisabled]}
+            >
+              {uploadResourceMutation.isPending ? <ActivityIndicator color="#ffffff" size="small" /> : <Upload color="#ffffff" size={13} />}
+              <Text style={styles.assetsUploadButtonText}>{uploadResourceMutation.isPending ? "处理中..." : "上传附件"}</Text>
+            </Pressable>
           ) : null}
         </View>
+        {uploadResourceMutation.error ? (
+          <Text style={styles.assetsUploadError}>{uploadResourceMutation.error instanceof Error ? uploadResourceMutation.error.message : "上传失败"}</Text>
+        ) : null}
 
         {resourcesQuery.isLoading ? (
           <View style={styles.centerState}>
@@ -4095,11 +4116,16 @@ const ResourcesModal = ({
             columnWrapperStyle={layout === "grid" ? styles.assetGridRow : undefined}
             contentContainerStyle={layout === "grid" ? styles.assetGrid : styles.assetList}
             data={filteredResources}
+            initialNumToRender={6}
             key={layout}
             keyExtractor={(resource) => resource.id}
+            maxToRenderPerBatch={8}
             numColumns={layout === "grid" ? 2 : 1}
+            removeClippedSubviews={Platform.OS === "android"}
             renderItem={({ item }) => <ResourceCard layout={layout} resource={item} onOpen={() => openResource(item)} onPreview={() => setPreviewResource(item)} />}
             refreshControl={<RefreshControl onRefresh={() => resourcesQuery.refetch()} refreshing={resourcesQuery.isFetching} tintColor="#0f172a" />}
+            updateCellsBatchingPeriod={32}
+            windowSize={5}
           />
         )}
 
@@ -4128,12 +4154,18 @@ const ResourceCard = ({
   resource: ResourceListItem;
 }) => {
   const { session } = useSession();
+  const { translate } = useMobileLocale();
   const source = resource.memoDeleted ? "已删除笔记" : resource.memoTitle || resource.memoExcerpt || resource.memoId;
   const isImage = resource.kind === "image";
   const localePreference = useMobileLocalePreference();
 
   return (
-    <Pressable onPress={isImage ? onPreview : onOpen} style={layout === "grid" ? styles.resourceGridCard : styles.resourceCard}>
+    <Pressable
+      accessibilityLabel={`${resource.filename || resource.id}, ${formatBytes(resource.byteSize)}, ${translate(`来自：${source}`)}`}
+      accessibilityRole="button"
+      onPress={isImage ? onPreview : onOpen}
+      style={layout === "grid" ? styles.resourceGridCard : styles.resourceCard}
+    >
       <View style={layout === "grid" ? styles.resourceGridThumb : styles.resourceThumb}>
         {isImage ? (
           <AuthenticatedResourceImage
@@ -4151,14 +4183,12 @@ const ResourceCard = ({
         </Text>
         {layout === "grid" ? (
           <>
-            <Text numberOfLines={1} style={styles.panelLabel}>
-              {formatBytes(resource.byteSize)} · {resource.mimeType?.split("/")[1] || resource.kind}
-            </Text>
-            <Text numberOfLines={1} style={styles.panelLabel}>
-              {formatDate(resource.createdAt, localePreference)}
-            </Text>
-            <Text numberOfLines={1} style={styles.panelLabel}>
-              来源：{source}
+            <View style={styles.resourceGridMetaRow}>
+              <Text numberOfLines={1} style={styles.resourceGridMetaText}>{formatBytes(resource.byteSize)}</Text>
+              <Text numberOfLines={1} style={styles.resourceGridMetaText}>{(resource.mimeType?.split("/")[1] || resource.kind).toUpperCase()}</Text>
+            </View>
+            <Text accessibilityLabel={translate(`来自：${source}`)} numberOfLines={1} style={styles.resourceGridSource}>
+              📄 {translate(source)}
             </Text>
           </>
         ) : (
@@ -4167,13 +4197,13 @@ const ResourceCard = ({
               {formatBytes(resource.byteSize)} · {resource.mimeType?.split("/")[1] || resource.kind} · {formatDate(resource.createdAt, localePreference)}
             </Text>
             <Text numberOfLines={1} style={styles.panelLabel}>
-              来源：{source}
+              {translate(`来源笔记：${source}`)}
             </Text>
           </>
         )}
       </View>
       {layout === "list" ? (
-        <Pressable onPress={onOpen} style={styles.secondaryIconButton}>
+        <Pressable accessibilityLabel={translate("在新窗口打开")} accessibilityRole="button" onPress={onOpen} style={styles.secondaryIconButton}>
           <ExternalLink color="#0f172a" size={16} />
         </Pressable>
       ) : null}
@@ -4197,6 +4227,7 @@ const ImagePreviewModal = ({
   resourceIndex: number;
 }) => {
   const { session } = useSession();
+  const { translate } = useMobileLocale();
 
   return <Modal animationType="fade" transparent visible={Boolean(resource)} onRequestClose={onClose}>
     <View style={styles.previewBackdrop}>
@@ -4209,7 +4240,7 @@ const ImagePreviewModal = ({
             {resourceIndex + 1}/{resourceCount}
           </Text>
         ) : null}
-        <IconButton onPress={onClose}>
+        <IconButton accessibilityLabel={translate("关闭")} onPress={onClose}>
           <X color="#0f172a" size={20} />
         </IconButton>
       </View>
@@ -4223,16 +4254,16 @@ const ImagePreviewModal = ({
       ) : null}
       {resourceCount > 1 ? (
         <View style={styles.previewNavRow}>
-          <Pressable accessibilityLabel="上一张" accessibilityRole="button" onPress={onPrevious} style={styles.previewNavButton}>
+          <Pressable accessibilityLabel={translate("上一张")} accessibilityRole="button" onPress={onPrevious} style={styles.previewNavButton}>
             <ChevronLeft color="#ffffff" size={26} />
           </Pressable>
-          <Pressable accessibilityLabel="下一张" accessibilityRole="button" onPress={onNext} style={styles.previewNavButton}>
+          <Pressable accessibilityLabel={translate("下一张")} accessibilityRole="button" onPress={onNext} style={styles.previewNavButton}>
             <ChevronRight color="#ffffff" size={26} />
           </Pressable>
         </View>
       ) : null}
       {resource ? (
-        <Pressable onPress={() => openResource(resource)} style={styles.previewOpenButton}>
+        <Pressable accessibilityLabel={translate("打开原文件")} accessibilityRole="button" onPress={() => openResource(resource)} style={styles.previewOpenButton}>
           <ExternalLink color="#ffffff" size={18} />
           <Text style={styles.previewOpenText}>打开原文件</Text>
         </Pressable>
@@ -4495,6 +4526,7 @@ const AuthenticatedResourceImage = ({
     <RNImage
       accessibilityLabel={alt || undefined}
       accessible={Boolean(alt)}
+      fadeDuration={Platform.OS === "android" ? 0 : undefined}
       onLoad={(event) => {
         const { height, width } = event.nativeEvent.source;
         if (height > 0 && width > 0) {
@@ -4502,6 +4534,7 @@ const AuthenticatedResourceImage = ({
         }
       }}
       onError={loadSvgFallback}
+      resizeMethod={Platform.OS === "android" ? "resize" : "auto"}
       resizeMode={resizeMode}
       source={source}
       style={imageStyle}
@@ -5956,7 +5989,7 @@ const NotebookPicker = ({
 };
 
 const OptionPill = ({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) => (
-  <Pressable onPress={onPress} style={[styles.optionPill, active && styles.optionPillActive]}>
+  <Pressable accessibilityRole="button" accessibilityState={{ selected: active }} onPress={onPress} style={[styles.optionPill, active && styles.optionPillActive]}>
     <Text style={[styles.optionPillText, active && styles.optionPillTextActive]}>{label}</Text>
   </Pressable>
 );
@@ -7598,8 +7631,8 @@ const baseWorkspaceStyles = StyleSheet.create({
     backgroundColor: "#ffffff",
     borderBottomColor: "#e2e8f0",
     borderBottomWidth: 1,
-    gap: 10,
-    padding: 14,
+    gap: 12,
+    padding: 16,
   },
   assetsSearchLayoutRow: {
     alignItems: "center",
@@ -7608,7 +7641,11 @@ const baseWorkspaceStyles = StyleSheet.create({
   },
   assetsSearchBox: {
     flex: 1,
-    minHeight: 38,
+    minHeight: 36,
+  },
+  assetsSearchInput: {
+    fontSize: 12,
+    minHeight: 34,
   },
   assetsSummary: {
     alignItems: "center",
@@ -7626,6 +7663,54 @@ const baseWorkspaceStyles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     lineHeight: 18,
+  },
+  assetsUploadBanner: {
+    alignItems: "center",
+    backgroundColor: "#ecfdf5",
+    borderBottomColor: "#a7f3d0",
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    gap: 8,
+    minHeight: 40,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+  },
+  assetsUploadBannerInactive: {
+    backgroundColor: "#fffbeb",
+    borderBottomColor: "#fde68a",
+  },
+  assetsUploadHint: {
+    color: "#047857",
+    flex: 1,
+    fontSize: 11,
+    fontWeight: "600",
+    lineHeight: 15,
+  },
+  assetsUploadHintInactive: {
+    color: "#92400e",
+  },
+  assetsUploadButton: {
+    alignItems: "center",
+    backgroundColor: "#059669",
+    borderRadius: 4,
+    flexDirection: "row",
+    gap: 4,
+    height: 28,
+    justifyContent: "center",
+    paddingHorizontal: 8,
+  },
+  assetsUploadButtonText: {
+    color: "#ffffff",
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  assetsUploadError: {
+    backgroundColor: "#fef2f2",
+    color: "#b91c1c",
+    fontSize: 12,
+    fontWeight: "600",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
   },
   layoutToggle: {
     alignSelf: "flex-start",
@@ -7711,13 +7796,13 @@ const baseWorkspaceStyles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     justifyContent: "center",
-    marginRight: 8,
-    minHeight: 34,
+    marginRight: 6,
+    minHeight: 32,
     paddingHorizontal: 12,
   },
   optionPillActive: {
-    backgroundColor: "#e2e8f0",
-    borderColor: "#cbd5e1",
+    backgroundColor: "#ecfdf5",
+    borderColor: "#a7f3d0",
   },
   optionPillText: {
     color: "#475569",
@@ -7725,7 +7810,7 @@ const baseWorkspaceStyles = StyleSheet.create({
     fontWeight: "700",
   },
   optionPillTextActive: {
-    color: "#0f172a",
+    color: "#047857",
   },
   list: {
     paddingBottom: 18,
@@ -7952,7 +8037,7 @@ const baseWorkspaceStyles = StyleSheet.create({
   },
   resourceGridThumb: {
     alignItems: "center",
-    aspectRatio: 1.18,
+    aspectRatio: 1,
     backgroundColor: "#f8fafc",
     borderBottomColor: "#e2e8f0",
     borderBottomWidth: 1,
@@ -7974,9 +8059,27 @@ const baseWorkspaceStyles = StyleSheet.create({
     minWidth: 0,
   },
   resourceGridInfo: {
-    gap: 5,
+    gap: 4,
     minWidth: 0,
-    padding: 10,
+    padding: 12,
+  },
+  resourceGridMetaRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  resourceGridMetaText: {
+    color: "#94a3b8",
+    fontSize: 10,
+    fontWeight: "600",
+  },
+  resourceGridSource: {
+    borderTopColor: "#f8fafc",
+    borderTopWidth: 1,
+    color: "#94a3b8",
+    fontSize: 10,
+    marginTop: 2,
+    paddingTop: 4,
   },
   centerState: {
     alignItems: "center",
