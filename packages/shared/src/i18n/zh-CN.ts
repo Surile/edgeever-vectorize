@@ -461,6 +461,7 @@ export const zhCN = {
     noNotebookFound: "没有找到笔记本",
     currentNotebookAria: "当前所在笔记本：{{name}}",
     switchToNotebook: "切换到 {{name}}",
+    attachmentLabel: "附件：{{filename}}",
     attachmentInsertText: "附件：{{filename}} {{url}}",
     placeholder: "开始记录...",
     noteBodyAria: "笔记正文",
@@ -558,6 +559,7 @@ export const zhCN = {
     markdownSource: "Markdown 源码",
     switchToMarkdown: "切换到 Markdown 模式",
     switchToRichText: "切换到富文本模式",
+    attachment: "上传附件",
   },
   mobileNotebookPicker: {
     title: "切换笔记本",

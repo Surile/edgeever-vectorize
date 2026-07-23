@@ -565,28 +565,46 @@ export const MobileStandaloneTiptapEditor = ({
     }
   };
 
-  const handleImageUpload = async (file?: File | null) => {
+  const handleResourceUpload = async (file?: File | null) => {
     const currentMemo = memoRef.current;
     if (!currentMemo || !editor || !file) {
       return;
     }
 
     setError(null);
-    setSaveStateStable("compressing");
-
     try {
-      const uploadFile = (await compressImageForUpload(file)).file;
+      const isImage = file.type.startsWith("image/");
+      setSaveStateStable(isImage ? "compressing" : "uploading");
+      const uploadFile = isImage ? (await compressImageForUpload(file)).file : file;
       setSaveStateStable("uploading");
       const { resource } = await uploadMobileEditorResource(currentMemo.id, uploadFile);
-      editor
-        .chain()
-        .focus()
-        .setImage({
-          src: resource.url,
-          alt: file.name,
-          title: file.name,
-        })
-        .run();
+      if (resource.kind === "image") {
+        editor
+          .chain()
+          .focus()
+          .setImage({
+            src: resource.url,
+            alt: file.name,
+            title: file.name,
+          })
+          .run();
+      } else {
+        editor
+          .chain()
+          .focus()
+          .insertContent({
+            type: "paragraph",
+            content: [{
+              type: "text",
+              text: `附件：${resource.filename || file.name}`,
+              marks: [{
+                type: "link",
+                attrs: { href: resource.url, target: "_blank", class: "edgeever-attachment-link" },
+              }],
+            }],
+          })
+          .run();
+      }
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : t("editor.uploadState.fileFailed"));
       setSaveStateStable("error");
@@ -921,12 +939,12 @@ export const MobileStandaloneTiptapEditor = ({
         <input
           ref={imageInputRef}
           type="file"
-          accept="image/png,image/jpeg,image/gif,image/webp,image/avif"
+          accept="*/*"
           hidden
           onChange={(event) => {
             const file = event.target.files?.[0];
             event.target.value = "";
-            void handleImageUpload(file);
+            void handleResourceUpload(file);
           }}
         />
 

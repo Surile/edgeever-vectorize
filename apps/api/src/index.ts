@@ -2147,7 +2147,7 @@ const validateImageUpload = (mimeType: string, size: number) => {
 
 const validateAttachmentUpload = (size: number) => {
   if (size <= 0 || size > MAX_ATTACHMENT_UPLOAD_BYTES) {
-    throw new AppError("upload_too_large", "Attachment must be between 1 byte and 50 MB.", 413);
+    throw new AppError("upload_too_large", "Attachment must be between 1 byte and 100 MB.", 413);
   }
 };
 
@@ -2206,7 +2206,12 @@ app.get("/api/v1/resources/:id/blob", async (c) => {
   headers.set("Content-Type", resource.mime_type ?? headers.get("Content-Type") ?? "application/octet-stream");
   headers.set("Cache-Control", headers.get("Cache-Control") ?? "private, max-age=3600");
   headers.set("Content-Length", String(object.size));
-  headers.set("Content-Disposition", contentDispositionInline(resource.filename));
+  headers.set(
+    "Content-Disposition",
+    resource.kind === "image"
+      ? contentDispositionInline(resource.filename)
+      : contentDispositionAttachment(resource.filename)
+  );
   headers.set("X-Content-Type-Options", "nosniff");
 
   return new Response(object.body, { headers });
@@ -6480,6 +6485,15 @@ const contentDispositionInline = (filename: string | null) => {
 
   const fallback = normalizeFilename(filename).replace(/"/g, "'");
   return `inline; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+};
+
+const contentDispositionAttachment = (filename: string | null) => {
+  if (!filename) {
+    return "attachment";
+  }
+
+  const fallback = normalizeFilename(filename).replace(/"/g, "'");
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 };
 
 const decodeTagParam = (value: string) => {

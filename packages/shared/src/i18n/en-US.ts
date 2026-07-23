@@ -461,6 +461,7 @@ export const enUS = {
     noNotebookFound: "No notebooks found",
     currentNotebookAria: "Current notebook: {{name}}",
     switchToNotebook: "Switch to {{name}}",
+    attachmentLabel: "Attachment: {{filename}}",
     attachmentInsertText: "Attachment: {{filename}} {{url}}",
     placeholder: "Start writing...",
     noteBodyAria: "Note body",
@@ -558,6 +559,7 @@ export const enUS = {
     markdownSource: "Markdown source",
     switchToMarkdown: "Switch to Markdown mode",
     switchToRichText: "Switch to rich text mode",
+    attachment: "Upload attachment",
   },
   mobileNotebookPicker: {
     title: "Switch notebook",

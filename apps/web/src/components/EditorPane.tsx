@@ -232,7 +232,7 @@ const getEditorSearchMatches = (editor: Editor | null, query: string): NoteSearc
   return getSearchMatchesFromDocument(editor.state.doc, query);
 };
 
-const getImageFilesFromDataTransfer = (dataTransfer: DataTransfer | null) => {
+const getResourceFilesFromDataTransfer = (dataTransfer: DataTransfer | null) => {
   if (!dataTransfer) {
     return [];
   }
@@ -243,7 +243,7 @@ const getImageFilesFromDataTransfer = (dataTransfer: DataTransfer | null) => {
     .filter((file): file is File => Boolean(file));
   const files = fileItems.length > 0 ? fileItems : Array.from(dataTransfer.files ?? []);
 
-  return files.filter((file) => SUPPORTED_PASTE_IMAGE_TYPES.has(file.type));
+  return files.filter((file) => file.size > 0);
 };
 
 const ResizableImageNodeView = ({ editor, node, selected, updateAttributes }: NodeViewProps) => {
@@ -1232,55 +1232,6 @@ const RichEditorPane = ({
     }
   }, [focusMobileInputTarget, isMobileViewport, memo?.id, mobileDefaultEditMemoId, onMobileDefaultEditConsumed, readOnly]);
 
-  const insertImageFiles = useCallback((files: File[]) => {
-    const currentMemo = memoRef.current;
-    const currentEditor = editorRef.current;
-
-    if (!currentMemo || currentMemo.isDeleted || !currentEditor || !currentEditor.isEditable || files.length === 0) {
-      return;
-    }
-
-    const targetMemoId = currentMemo.id;
-
-    void (async () => {
-      setImageUploadState("uploading");
-
-      try {
-        for (const file of files) {
-          const shouldCompress = imageCompressionEnabledRef.current;
-          setImageUploadState(shouldCompress ? "compressing" : "uploading");
-          const uploadFile = shouldCompress ? (await compressImageForUpload(file)).file : file;
-
-          setImageUploadState("uploading");
-          const { resource } = await api.uploadMemoResource(targetMemoId, uploadFile);
-          void queryClient.invalidateQueries({ queryKey: ["resources"] });
-
-          const activeEditor = editorRef.current;
-          if (memoRef.current?.id !== targetMemoId || !isEditorReady(activeEditor)) {
-            setImageUploadState("idle");
-            return;
-          }
-
-          activeEditor
-            .chain()
-            .focus()
-            .setImage({
-              src: resource.url,
-              alt: file.name,
-              title: file.name,
-              width: DEFAULT_IMAGE_WIDTH_PERCENT,
-            })
-            .run();
-        }
-
-        setImageUploadState("idle");
-      } catch {
-        setImageUploadState("error");
-        window.setTimeout(() => setImageUploadState("idle"), 2200);
-      }
-    })();
-  }, [queryClient]);
-
   const insertResourceFiles = useCallback((files: File[]) => {
     const currentMemo = memoRef.current;
     const currentEditor = editorRef.current;
@@ -1328,7 +1279,14 @@ const RichEditorPane = ({
               .focus()
               .insertContent({
                 type: "paragraph",
-                content: [{ type: "text", text: t("editor.attachmentInsertText", { filename: resource.filename || file.name, url: resource.url }) }],
+                content: [{
+                  type: "text",
+                  text: t("editor.attachmentLabel", { filename: resource.filename || file.name }),
+                  marks: [{
+                    type: "link",
+                    attrs: { href: resource.url, target: "_blank", class: "edgeever-attachment-link" },
+                  }],
+                }],
               })
               .run();
           }
@@ -1340,7 +1298,7 @@ const RichEditorPane = ({
         window.setTimeout(() => setImageUploadState("idle"), 2200);
       }
     })();
-  }, [queryClient]);
+  }, [queryClient, t]);
 
   const editor = useEditor({
     extensions: [
@@ -1397,25 +1355,25 @@ const RichEditorPane = ({
         return true;
       },
       handlePaste: (_view, event) => {
-        const files = getImageFilesFromDataTransfer(event.clipboardData);
+        const files = getResourceFilesFromDataTransfer(event.clipboardData);
 
         if (files.length === 0) {
           return false;
         }
 
         event.preventDefault();
-        insertImageFiles(files);
+        insertResourceFiles(files);
         return true;
       },
       handleDrop: (_view, event) => {
-        const files = getImageFilesFromDataTransfer(event.dataTransfer);
+        const files = getResourceFilesFromDataTransfer(event.dataTransfer);
 
         if (files.length === 0) {
           return false;
         }
 
         event.preventDefault();
-        insertImageFiles(files);
+        insertResourceFiles(files);
         return true;
       },
     },
@@ -2842,6 +2800,7 @@ const RichEditorPane = ({
             readOnly={effectiveReadOnly}
             markdownMode={useMarkdownSourceEditor}
             onMarkdownModeChange={handleMarkdownModeChange}
+            onPickAttachment={() => fileInputRef.current?.click()}
           />
         )}
       </header>

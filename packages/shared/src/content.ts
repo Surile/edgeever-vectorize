@@ -69,13 +69,52 @@ export const resolveMemoContentDoc = (
   contentJson: TiptapDoc | null | undefined,
   contentMarkdown: string | null | undefined
 ): TiptapDoc => {
-  const currentDoc = contentJson && Array.isArray(contentJson.content) ? contentJson : emptyDoc();
+  const currentDoc = contentJson && Array.isArray(contentJson.content)
+    ? upgradeLegacyAttachmentLinks(contentJson)
+    : emptyDoc();
   if (!contentMarkdown?.trim() || docContainsNodeType(currentDoc, "table")) {
     return currentDoc;
   }
 
   const markdownDoc = markdownToDoc(contentMarkdown);
   return docContainsNodeType(markdownDoc, "table") ? markdownDoc : currentDoc;
+};
+
+const LEGACY_ATTACHMENT_PATTERN = /^(附件：|Attachment:\s*)(.+?)\s+(\/api\/v1\/resources\/\S+|https?:\/\/\S+)$/;
+
+const isTiptapTextNode = (node: TiptapNode | TiptapTextNode): node is TiptapTextNode =>
+  node.type === "text" && "text" in node;
+
+/** Convert the first-generation plain-text attachment insertion into a link mark. */
+const upgradeLegacyAttachmentLinks = (doc: TiptapDoc): TiptapDoc => {
+  const visit = (node: TiptapNode | TiptapTextNode): TiptapNode | TiptapTextNode => {
+    if (isTiptapTextNode(node)) {
+      const match = node.text.match(LEGACY_ATTACHMENT_PATTERN);
+      if (!match) {
+        return node;
+      }
+
+      const existingMarks = node.marks ?? [];
+      if (existingMarks.some((mark) => mark.type === "link")) {
+        return node;
+      }
+
+      return {
+        ...node,
+        text: `${match[1]}${match[2]}`,
+        marks: [
+          ...existingMarks,
+          { type: "link", attrs: { href: match[3], target: "_blank", class: "edgeever-attachment-link" } },
+        ],
+      };
+    }
+
+    return node.content
+      ? { ...node, content: node.content.map((child: TiptapNode | TiptapTextNode) => visit(child)) }
+      : node;
+  };
+
+  return visit(doc) as TiptapDoc;
 };
 
 export const docToText = (doc: unknown): string => {

@@ -222,6 +222,46 @@ textarea {
   margin: 0 0 var(--editor-paragraph-spacing);
 }
 
+.ProseMirror a.edgeever-attachment-link,
+.ProseMirror a[href*="/api/v1/resources/"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  max-width: min(100%, 34rem);
+  padding: 0.55rem 0.8rem;
+  border: 1px solid rgb(203 213 225 / 0.9);
+  border-radius: 0.65rem;
+  background: linear-gradient(135deg, rgb(248 250 252), rgb(241 245 249));
+  color: rgb(30 41 59);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.35;
+  text-decoration: none;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.06);
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.ProseMirror a.edgeever-attachment-link::before,
+.ProseMirror a[href*="/api/v1/resources/"]::before {
+  content: "📎";
+  flex: 0 0 auto;
+  font-size: 1rem;
+}
+
+.ProseMirror a.edgeever-attachment-link:hover,
+.ProseMirror a[href*="/api/v1/resources/"]:hover {
+  border-color: rgb(16 185 129 / 0.55);
+  background: linear-gradient(135deg, rgb(236 253 245), rgb(240 253 250));
+  box-shadow: 0 3px 10px rgb(15 118 110 / 0.12);
+}
+
+:root.dark .ProseMirror a.edgeever-attachment-link,
+:root.dark .ProseMirror a[href*="/api/v1/resources/"] {
+  border-color: rgb(71 85 105 / 0.8);
+  background: linear-gradient(135deg, rgb(30 41 59), rgb(15 23 42));
+  color: rgb(226 232 240);
+}
+
 .ProseMirror ul,
 .ProseMirror ol {
   padding-left: 1.5rem;

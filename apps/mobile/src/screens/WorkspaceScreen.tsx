@@ -2263,31 +2263,38 @@ const CreateMemoModal = ({
       const result = await DocumentPicker.getDocumentAsync({
         copyToCacheDirectory: true,
         multiple: false,
-        type: ["image/*"],
+        type: "*/*",
       });
       const asset = result.canceled ? null : result.assets[0];
       if (!asset) {
         return;
       }
-      uploadId = createMobileImageUploadId();
-      const previewDataUrl = await createLocalImagePreviewDataUrl(asset);
-      editorRef.current?.beginImageUpload(uploadId, previewDataUrl);
+      const isImage = asset.mimeType?.startsWith("image/") ?? false;
+      if (isImage) {
+        uploadId = createMobileImageUploadId();
+        const previewDataUrl = await createLocalImagePreviewDataUrl(asset);
+        editorRef.current?.beginImageUpload(uploadId, previewDataUrl);
+      }
       const memo = await materializeMemoForImage();
       setImageOperation("uploading");
       const uploadAsset = await prepareUploadAsset(asset, imageCompressionEnabled);
       const form = new FormData();
       form.append("file", new ExpoFile(uploadAsset.uri));
       const { resource } = await client!.uploadMemoResource(memo.id, form);
-      editorRef.current?.completeImageUpload(
-        uploadId,
-        resource.url,
-        resource.filename || uploadAsset.name || "图片"
-      );
+      if (resource.kind === "image" && uploadId) {
+        editorRef.current?.completeImageUpload(
+          uploadId,
+          resource.url,
+          resource.filename || uploadAsset.name || "图片"
+        );
+      } else {
+        editorRef.current?.appendAttachment(resource.url, resource.filename || uploadAsset.name || "附件");
+      }
     } catch (error) {
       if (uploadId) {
         editorRef.current?.cancelImageUpload(uploadId);
       }
-      Alert.alert("图片上传失败", error instanceof Error ? error.message : "请检查网络连接后重试");
+      Alert.alert("附件上传失败", error instanceof Error ? error.message : "请检查网络连接后重试");
     } finally {
       setImageOperation("idle");
     }
@@ -4549,32 +4556,39 @@ const RichEditorModal = ({
     const result = await DocumentPicker.getDocumentAsync({
       copyToCacheDirectory: true,
       multiple: false,
-      type: ["image/*"],
+      type: "*/*",
     });
     const asset = result.canceled ? null : result.assets[0];
     if (!asset) {
       return;
     }
 
-    const uploadId = createMobileImageUploadId();
+    const isImage = asset.mimeType?.startsWith("image/") ?? false;
+    const uploadId = isImage ? createMobileImageUploadId() : null;
     uploadingRef.current = true;
     setUploading(true);
     setError(null);
     try {
-      const previewDataUrl = await createLocalImagePreviewDataUrl(asset);
-      editorRef.current?.beginImageUpload(uploadId, previewDataUrl);
+      if (isImage && uploadId) {
+        const previewDataUrl = await createLocalImagePreviewDataUrl(asset);
+        editorRef.current?.beginImageUpload(uploadId, previewDataUrl);
+      }
       const uploadAsset = await prepareUploadAsset(asset, imageCompressionEnabled);
       const form = new FormData();
       form.append("file", new ExpoFile(uploadAsset.uri));
       const { resource } = await client.uploadMemoResource(memo.id, form);
-      editorRef.current?.completeImageUpload(
-        uploadId,
-        resource.url,
-        resource.filename || uploadAsset.name || "图片"
-      );
+      if (resource.kind === "image" && uploadId) {
+        editorRef.current?.completeImageUpload(
+          uploadId,
+          resource.url,
+          resource.filename || uploadAsset.name || "图片"
+        );
+      } else {
+        editorRef.current?.appendAttachment(resource.url, resource.filename || uploadAsset.name || "附件");
+      }
     } catch (uploadError) {
       editorRef.current?.cancelImageUpload(uploadId);
-      setError(uploadError instanceof Error ? uploadError.message : "图片上传失败");
+      setError(uploadError instanceof Error ? uploadError.message : "附件上传失败");
     } finally {
       uploadingRef.current = false;
       setUploading(false);

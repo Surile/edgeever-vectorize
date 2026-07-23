@@ -45,6 +45,7 @@ export interface LocalTiptapEditorRef extends DOMImperativeFactory {
   beginImageUpload: (uploadId: DOMValue, previewDataUrl: DOMValue) => void;
   cancelImageUpload: (uploadId: DOMValue) => void;
   completeImageUpload: (uploadId: DOMValue, imageUrl: DOMValue, alt: DOMValue) => void;
+  appendAttachment: (attachmentUrl: DOMValue, filename: DOMValue) => void;
   flush: () => void;
   focusEnd: () => void;
   replaceAll: (query: DOMValue, replacement: DOMValue) => void;
@@ -364,18 +365,41 @@ function LocalTiptapEditorImpl(props: LocalTiptapEditorProps) {
     );
   }, [editor, props.baseUrl]);
 
+  const appendAttachment = useCallback((attachmentUrlValue: DOMValue, filenameValue: DOMValue) => {
+    if (!editor || typeof attachmentUrlValue !== "string" || typeof filenameValue !== "string") {
+      return;
+    }
+
+    editor.chain().focus().insertContent({
+      type: "paragraph",
+      content: [{
+        type: "text",
+        text: `附件：${filenameValue}`,
+        marks: [{
+          type: "link",
+          attrs: {
+            href: resolveUrl(attachmentUrlValue, props.baseUrl),
+            target: "_blank",
+            class: "edgeever-attachment-link",
+          },
+        }],
+      }],
+    }).run();
+  }, [editor, props.baseUrl]);
+
   useDOMImperativeHandle(
     props.ref,
     () => ({
       beginImageUpload,
       cancelImageUpload,
       completeImageUpload,
+      appendAttachment,
       flush,
       focusEnd: () => editor?.commands.focus("end"),
       replaceAll,
       search,
     }),
-    [beginImageUpload, cancelImageUpload, completeImageUpload, editor, flush, replaceAll, search]
+    [appendAttachment, beginImageUpload, cancelImageUpload, completeImageUpload, editor, flush, replaceAll, search]
   );
 
   useEffect(() => {

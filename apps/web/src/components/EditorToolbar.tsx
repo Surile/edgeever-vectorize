@@ -14,6 +14,7 @@ import {
   SquareCode,
   Workflow,
   Minus,
+  Paperclip,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
@@ -129,11 +130,13 @@ export const EditorToolbar = ({
   readOnly,
   markdownMode = false,
   onMarkdownModeChange,
+  onPickAttachment,
 }: {
   editor: Editor | null;
   readOnly: boolean;
   markdownMode?: boolean;
   onMarkdownModeChange?: () => void;
+  onPickAttachment?: () => void;
 }) => {
   const { t } = useTranslation();
   const editorReady = isToolbarEditorReady(editor);
@@ -234,6 +237,18 @@ export const EditorToolbar = ({
               >
                 {markdownMode ? t("editorToolbar.switchToRichText") : t("editorToolbar.switchToMarkdown")}
               </button>
+              <ToolbarDivider />
+            </>
+          )}
+          {onPickAttachment && (
+            <>
+              <EditorToolbarButton
+                title={t("editorToolbar.attachment")}
+                disabled={readOnly}
+                onClick={onPickAttachment}
+              >
+                <Paperclip className="h-4 w-4" />
+              </EditorToolbarButton>
               <ToolbarDivider />
             </>
           )}
