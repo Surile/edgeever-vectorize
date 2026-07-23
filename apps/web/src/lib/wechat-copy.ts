@@ -85,6 +85,44 @@ const blobToDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
   reader.readAsDataURL(blob);
 });
 
+const WECHAT_IMAGE_MIME_TYPES = new Set([
+  "image/bmp",
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/gif",
+  "image/webp",
+]);
+
+const convertImageToPng = async (blob: Blob) => {
+  if (WECHAT_IMAGE_MIME_TYPES.has(blob.type.toLocaleLowerCase())) {
+    return blob;
+  }
+
+  const bitmap = await createImageBitmap(blob);
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      throw new Error("Could not create image canvas");
+    }
+    context.drawImage(bitmap, 0, 0);
+    return await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((png) => {
+        if (png) {
+          resolve(png);
+          return;
+        }
+        reject(new Error("Could not convert image to PNG"));
+      }, "image/png");
+    });
+  } finally {
+    bitmap.close();
+  }
+};
+
 const embedImagesForWeChat = async (root: HTMLElement) => {
   const images = Array.from(root.querySelectorAll<HTMLImageElement>("img"));
   await Promise.all(images.map(async (image) => {
@@ -98,7 +136,7 @@ const embedImagesForWeChat = async (root: HTMLElement) => {
       if (!response.ok) {
         return;
       }
-      image.setAttribute("src", await blobToDataUrl(await response.blob()));
+      image.setAttribute("src", await blobToDataUrl(await convertImageToPng(await response.blob())));
       image.removeAttribute("srcset");
     } catch {
       // Keep the original URL when the browser cannot fetch an external image.

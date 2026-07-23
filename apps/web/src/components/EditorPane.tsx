@@ -27,6 +27,9 @@ import {
   Search,
   Type,
   X,
+  Check,
+  CircleAlert,
+  LoaderCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GitHubRepositoryLink } from "@/components/GitHubRepositoryLink";
@@ -1148,7 +1151,7 @@ const RichEditorPane = ({
   const [mobileImeDebugOpen, setMobileImeDebugOpen] = useState(false);
   const [mobileImeDebugActiveElement, setMobileImeDebugActiveElement] = useState(getActiveElementLabel);
   const [mobileImeDebugEvents, setMobileImeDebugEvents] = useState<MobileImeDebugEntry[]>([]);
-  const [wechatCopyState, setWechatCopyState] = useState<"idle" | "copied" | "error">("idle");
+  const [wechatCopyState, setWechatCopyState] = useState<"idle" | "copying" | "copied" | "error">("idle");
   const notebookOptions = useMemo(() => getNotebookMoveOptions(notebooks), [notebooks]);
   const readOnly = isTrashView || Boolean(memo?.isDeleted);
   const mobileDefaultEditRequested = Boolean(memo?.id && memo.id === mobileDefaultEditMemoId && !readOnly);
@@ -1929,6 +1932,7 @@ const RichEditorPane = ({
       return;
     }
 
+    setWechatCopyState("copying");
     try {
       if (useMarkdownSourceEditor) {
         await copyMarkdownToWeChat(markdownSource);
@@ -1936,10 +1940,10 @@ const RichEditorPane = ({
         await copyEditorToWeChat(editor);
       }
       setWechatCopyState("copied");
-      window.setTimeout(() => setWechatCopyState("idle"), 1800);
+      window.setTimeout(() => setWechatCopyState("idle"), 2200);
     } catch {
       setWechatCopyState("error");
-      window.setTimeout(() => setWechatCopyState("idle"), 2200);
+      window.setTimeout(() => setWechatCopyState("idle"), 2600);
     }
   }, [editor, markdownSource, useMarkdownSourceEditor]);
 
@@ -2589,20 +2593,30 @@ const RichEditorPane = ({
                 <TooltipTrigger asChild>
                   <Button
                     className={cn(
-                      "hidden h-8 w-8 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-950 focus-visible:ring-2 focus-visible:ring-slate-300 sm:inline-flex",
-                      wechatCopyState === "copied" && "bg-emerald-50"
+                      "hidden h-8 w-8 text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-950 focus-visible:ring-2 focus-visible:ring-slate-300 sm:inline-flex",
+                      wechatCopyState === "copying" && "bg-slate-100 text-slate-700",
+                      wechatCopyState === "copied" && "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100",
+                      wechatCopyState === "error" && "bg-rose-100 text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100"
                     )}
                     size="icon"
                     variant="ghost"
                     aria-label={t("editor.copyToWeChat")}
                     onClick={() => void handleCopyToWeChat()}
-                    disabled={!editor || effectiveReadOnly || useMobilePlainTextEditor}
+                    disabled={!editor || effectiveReadOnly || useMobilePlainTextEditor || wechatCopyState === "copying"}
                   >
-                    <WeChatIcon className="h-5 w-5" />
+                    {wechatCopyState === "copying" ? (
+                      <LoaderCircle className="h-4 w-4 animate-spin" />
+                    ) : wechatCopyState === "copied" ? (
+                      <Check className="h-5 w-5" strokeWidth={2.75} />
+                    ) : wechatCopyState === "error" ? (
+                      <CircleAlert className="h-5 w-5" strokeWidth={2.25} />
+                    ) : (
+                      <WeChatIcon className="h-5 w-5" />
+                    )}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
-                  {t(wechatCopyState === "copied" ? "editor.copiedToWeChat" : wechatCopyState === "error" ? "editor.copyToWeChatFailed" : "editor.copyToWeChat")}
+                  {t(wechatCopyState === "copying" ? "editor.copyingToWeChat" : wechatCopyState === "copied" ? "editor.copiedToWeChat" : wechatCopyState === "error" ? "editor.copyToWeChatFailed" : "editor.copyToWeChat")}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

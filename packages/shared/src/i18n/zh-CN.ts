@@ -533,6 +533,7 @@ export const zhCN = {
     clipboardReadFailed: "读取剪贴板失败。请确认浏览器允许剪贴板权限。",
     characterCount: "{{count}} 字",
     copyToWeChat: "复制到公众号",
+    copyingToWeChat: "正在准备公众号内容",
     copiedToWeChat: "已复制",
     copyToWeChatFailed: "复制失败",
   },
