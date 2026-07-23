@@ -205,6 +205,10 @@ export const enUS = {
     browserMode: "Browser",
     unknown: "Unknown",
     copy: "Copy info",
+    updateAvailableTitle: "New version available",
+    updateAvailableDescription: "This version is out of date. The latest version is {{version}}.",
+    viewRelease: "View update",
+    latestVersion: "You are running the latest version",
   },
   feedback: {
     title: "Feedback",
