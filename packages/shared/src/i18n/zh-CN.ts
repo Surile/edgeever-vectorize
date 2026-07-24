@@ -569,6 +569,8 @@ export const zhCN = {
     inlineCode: "行内代码",
     bulletList: "无序列表",
     orderedList: "有序列表",
+    increaseListIndent: "增加列表层级（Tab）",
+    decreaseListIndent: "减少列表层级（Shift + Tab）",
     quote: "引用",
     codeBlock: "代码块",
     copyCode: "复制代码",

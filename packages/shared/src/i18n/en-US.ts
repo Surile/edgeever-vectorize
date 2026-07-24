@@ -569,6 +569,8 @@ export const enUS = {
     inlineCode: "Inline code",
     bulletList: "Bulleted list",
     orderedList: "Numbered list",
+    increaseListIndent: "Increase list level (Tab)",
+    decreaseListIndent: "Decrease list level (Shift + Tab)",
     quote: "Quote",
     codeBlock: "Code block",
     copyCode: "Copy code",
