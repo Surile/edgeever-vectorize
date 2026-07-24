@@ -1,4 +1,5 @@
 @import "highlight.js/styles/github.css";
+@import "./editor-themes/index.css";
 
 @tailwind base;
 @tailwind components;
@@ -172,6 +173,9 @@ textarea {
 }
 
 .ProseMirror {
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
   color: #000;
   font-size: var(--editor-body-font-size);
   line-height: var(--editor-body-line-height);
@@ -193,6 +197,8 @@ textarea {
 
 @media (max-width: 1023px) {
   .ProseMirror {
+    max-width: none;
+    margin: 0;
     padding: 18px 16px max(4rem, env(safe-area-inset-bottom));
   }
 }
@@ -320,7 +326,31 @@ textarea {
 
 .ProseMirror .edgeever-code-block,
 .ProseMirror .edgeever-mermaid-code-block {
+  position: relative;
   margin: 0 0 1rem;
+}
+
+.ProseMirror .edgeever-code-copy-button {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  z-index: 1;
+  border: 1px solid #cbded1;
+  border-radius: 5px;
+  padding: 0.2rem 0.45rem;
+  background: rgb(247 251 248 / 0.92);
+  color: #475569;
+  font: inherit;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.ProseMirror .edgeever-code-copy-button:hover,
+.ProseMirror .edgeever-code-copy-button:focus-visible {
+  border-color: #0f766e;
+  color: #0f766e;
+  outline: none;
 }
 
 .ProseMirror .edgeever-code-source {
@@ -333,6 +363,7 @@ textarea {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 0.875em;
   white-space: pre;
+  padding-right: 5.5rem;
 }
 
 .ProseMirror .edgeever-mermaid-code-block {
@@ -726,6 +757,28 @@ textarea {
   .markdown-content td {
     width: var(--mobile-table-column-width);
     min-width: var(--mobile-table-column-width);
+  }
+}
+
+@media (min-width: 768px) {
+  .ProseMirror .tableWrapper {
+    width: 100%;
+  }
+
+  .ProseMirror table {
+    width: 100%;
+    min-width: 100% !important;
+    table-layout: auto;
+  }
+
+  .ProseMirror table col {
+    width: auto !important;
+  }
+
+  .ProseMirror th,
+  .ProseMirror td {
+    width: auto;
+    min-width: 0;
   }
 }
 

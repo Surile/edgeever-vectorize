@@ -1,6 +1,6 @@
 # Deploy EdgeEver with Cloudflare
 
-The **Deploy to Cloudflare** button is the recommended first-installation path. It creates a repository in your GitHub account, provisions the Worker, D1 database, and R2 bucket, applies the database migrations, and connects the repository to Cloudflare Workers Builds.
+The **Deploy to Cloudflare** button is the recommended first-installation path. It creates a repository in your GitHub account, provisions the EdgeEver product Worker, D1 database, and R2 bucket, applies the database migrations, and connects the repository to Cloudflare Workers Builds. It does not deploy the official marketing site in `apps/site`; that site is a separate upstream-only Cloudflare Pages project.
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/tianma-if/edgeever)
 
@@ -25,9 +25,11 @@ To follow the latest upstream `main` instead, create a GitHub repository variabl
 
 GitHub may delay scheduled workflows and may disable them for an inactive public repository. If daily updates stop, open the repository's **Actions** tab, enable **Update deployed EdgeEver**, and run it manually once. Do not force-push over update conflicts; resolve them or return to an unmodified deployment repository.
 
+The updater also bootstraps repositories created by the Cloudflare Deploy button. Those repositories start with a synthetic `source repo import` commit instead of the upstream Git history, so the first successful update creates the history connection automatically. If the repository was created before the updater workflow was added, copy the current `.github/workflows/sync-edgeever-upstream.yml` from upstream into the repository, commit it to `main`, and run it manually once from **Actions**. The bootstrap is safe only for an unmodified deployment repository; customized repositories must be reconciled manually first.
+
 ## Alternative Entry Points
 
 - Use [AI Agent Cloudflare Deployment](agent-deploy-cloudflare.md) when an agent should perform the same deterministic CLI deployment with custom configuration.
 - Use [Cloudflare Manual Deployment](manual-deploy.md) for advanced configuration, troubleshooting, or emergency recovery.
 
-All three entry points share the same build, migration, Worker deployment, and verification commands. After first installation, they converge on Workers Builds and the same automatic-update workflow.
+All three entry points share the same product Worker build, migration, deployment, and verification commands. They do not require the official site. After first installation, they converge on Workers Builds and the same automatic-update workflow.

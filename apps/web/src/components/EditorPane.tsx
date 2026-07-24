@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback, useMemo, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useRef, useState, useEffect, useCallback, useMemo, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { NodeViewWrapper, ReactNodeViewRenderer, useEditor, EditorContent, type Editor, type NodeViewProps } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
@@ -27,6 +27,9 @@ import {
   Search,
   Type,
   X,
+  Check,
+  CircleAlert,
+  LoaderCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GitHubRepositoryLink } from "@/components/GitHubRepositoryLink";
@@ -55,7 +58,9 @@ import {
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { EditorToolbar } from "./EditorToolbar";
+import { WeChatIcon } from "./WeChatIcon";
 import { ThemeToggle } from "./ThemeToggle";
+import { useTheme } from "./ThemeProvider";
 import { RevisionHistoryDialog } from "./dialogs/RevisionHistoryDialog";
 import { api } from "@/lib/api";
 import { consumeStandaloneMobileEditorReturn, openStandaloneMobileEditor } from "@/lib/mobile-editor";
@@ -84,6 +89,8 @@ import {
   getEditableMemoTitle,
   getNotebookMoveOptions,
 } from "@/lib/app-helpers";
+import { copyEditorToWeChat, copyMarkdownToWeChat } from "@/lib/wechat-copy";
+import { ThemeBlock } from "./ThemeBlock";
 
 const SUPPORTED_PASTE_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"]);
 const MOBILE_EDITOR_QUERY = "(max-width: 639px)";
@@ -1114,6 +1121,7 @@ const RichEditorPane = ({
   onRequestMobileNativeEdit,
 }: RichEditorPaneProps) => {
   const { t } = useTranslation();
+  const { customEditorTheme, editorTheme } = useTheme();
   const queryClient = useQueryClient();
   const isSelectionMode = Boolean(selectionActionBar);
   const [title, setTitle] = useState("");
@@ -1143,6 +1151,7 @@ const RichEditorPane = ({
   const [mobileImeDebugOpen, setMobileImeDebugOpen] = useState(false);
   const [mobileImeDebugActiveElement, setMobileImeDebugActiveElement] = useState(getActiveElementLabel);
   const [mobileImeDebugEvents, setMobileImeDebugEvents] = useState<MobileImeDebugEntry[]>([]);
+  const [wechatCopyState, setWechatCopyState] = useState<"idle" | "copying" | "copied" | "error">("idle");
   const notebookOptions = useMemo(() => getNotebookMoveOptions(notebooks), [notebooks]);
   const readOnly = isTrashView || Boolean(memo?.isDeleted);
   const mobileDefaultEditRequested = Boolean(memo?.id && memo.id === mobileDefaultEditMemoId && !readOnly);
@@ -1304,6 +1313,7 @@ const RichEditorPane = ({
     extensions: [
       StarterKit.configure({ codeBlock: false }),
       EdgeEverCodeBlock.configure({ lowlight: codeBlockLowlight, defaultLanguage: "plaintext" }),
+      ThemeBlock,
       ResizableImage.configure({
         allowBase64: false,
         inline: false,
@@ -1833,7 +1843,12 @@ const RichEditorPane = ({
       setMobilePlainTextElementValue(mobileTextAreaRef.current, nextMarkdown);
 
       if (isEditorReady(currentEditor)) {
-        currentEditor.commands.setContent(nextContent);
+        try {
+          currentEditor.commands.setContent(nextContent);
+        } catch (err) {
+          console.error("Failed to set TipTap contentJson, falling back to markdownToDoc:", err);
+          currentEditor.commands.setContent(markdownToDoc(nextMarkdown));
+        }
       }
 
       hydratedMemoIdRef.current = memo.id;
@@ -1916,6 +1931,26 @@ const RichEditorPane = ({
     setMarkdownSource(value);
     markDirty();
   }, [markDirty]);
+
+  const handleCopyToWeChat = useCallback(async () => {
+    if (!isEditorReady(editor)) {
+      return;
+    }
+
+    setWechatCopyState("copying");
+    try {
+      if (useMarkdownSourceEditor) {
+        await copyMarkdownToWeChat(markdownSource);
+      } else {
+        await copyEditorToWeChat(editor);
+      }
+      setWechatCopyState("copied");
+      window.setTimeout(() => setWechatCopyState("idle"), 2200);
+    } catch {
+      setWechatCopyState("error");
+      window.setTimeout(() => setWechatCopyState("idle"), 2600);
+    }
+  }, [editor, markdownSource, useMarkdownSourceEditor]);
 
   useEffect(() => {
     if (!useMobilePlainTextEditor) {
@@ -2003,7 +2038,12 @@ const RichEditorPane = ({
 
       if (useMobilePlainTextEditor && isEditorReady(editorRef.current)) {
         hydratingRef.current = true;
-        editorRef.current.commands.setContent(savedMemo.contentJson);
+        try {
+          editorRef.current.commands.setContent(savedMemo.contentJson);
+        } catch (err) {
+          console.error("Failed to update mobile editor contentJson, falling back to markdownToDoc:", err);
+          editorRef.current.commands.setContent(markdownToDoc(savedMemo.contentMarkdown ?? ""));
+        }
         window.setTimeout(() => {
           hydratingRef.current = false;
         }, 0);
@@ -2558,6 +2598,38 @@ const RichEditorPane = ({
             <Button className="hidden h-8 w-8 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-950 focus-visible:ring-2 focus-visible:ring-slate-300 sm:inline-flex" size="icon" variant="ghost" title={t("editor.searchCurrentMemo")} aria-label={t("editor.searchCurrentMemo")} onClick={() => openNoteSearch()}>
               <Search className="h-5 w-5" strokeWidth={2.25} />
             </Button>
+            <TooltipProvider delayDuration={250} skipDelayDuration={100}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    className={cn(
+                      "hidden h-8 w-8 text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-950 focus-visible:ring-2 focus-visible:ring-slate-300 sm:inline-flex",
+                      wechatCopyState === "copying" && "bg-slate-100 text-slate-700",
+                      wechatCopyState === "copied" && "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100",
+                      wechatCopyState === "error" && "bg-rose-100 text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100"
+                    )}
+                    size="icon"
+                    variant="ghost"
+                    aria-label={t("editor.copyToWeChat")}
+                    onClick={() => void handleCopyToWeChat()}
+                    disabled={!editor || effectiveReadOnly || useMobilePlainTextEditor || wechatCopyState === "copying"}
+                  >
+                    {wechatCopyState === "copying" ? (
+                      <LoaderCircle className="h-4 w-4 animate-spin" />
+                    ) : wechatCopyState === "copied" ? (
+                      <Check className="h-5 w-5" strokeWidth={2.75} />
+                    ) : wechatCopyState === "error" ? (
+                      <CircleAlert className="h-5 w-5" strokeWidth={2.25} />
+                    ) : (
+                      <WeChatIcon className="h-5 w-5" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {t(wechatCopyState === "copying" ? "editor.copyingToWeChat" : wechatCopyState === "copied" ? "editor.copiedToWeChat" : wechatCopyState === "error" ? "editor.copyToWeChatFailed" : "editor.copyToWeChat")}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <Button className="hidden h-8 w-8 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-950 focus-visible:ring-2 focus-visible:ring-slate-300 sm:inline-flex" size="icon" variant="ghost" title={t("editor.versionHistory")} aria-label={t("editor.versionHistory")} onClick={() => setHistoryOpen(true)}>
               <History className="h-5 w-5" strokeWidth={2.25} />
             </Button>
@@ -2807,6 +2879,15 @@ const RichEditorPane = ({
 
       <div
         ref={editorScrollContainerRef}
+        data-editor-theme={editorTheme}
+        style={editorTheme === "custom" ? {
+          "--editor-theme-bg": customEditorTheme.background,
+          "--editor-theme-text": customEditorTheme.text,
+          "--editor-theme-heading": customEditorTheme.heading,
+          "--editor-theme-accent": customEditorTheme.accent,
+          "--editor-theme-soft": customEditorTheme.soft,
+          "--editor-theme-border": customEditorTheme.border,
+        } as CSSProperties : undefined}
         className={cn(
           "edgeever-editor relative min-h-0 flex-1 bg-white",
           useMobilePlainTextEditor ? "overflow-visible" : "overflow-y-auto"
