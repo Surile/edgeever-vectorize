@@ -78,6 +78,10 @@ bun run build:android:apk:local
 - 仅在用户明确指定远程实例并要求连接时，使用 `EDGE_EVER_INSTANCE=<实例名> bun run dev:remote`；私有配置以 `.env.local` 为准，不得硬编码实例名。
 - 仅在用户明确要求只启动前端时使用 `bun run dev:web`。
 
+## Demo 示例笔记同步
+
+修改 Demo 示例笔记后，使用 `bun run demo:sync` 将已推送的 `main` 部署到公开 Demo，并用最新种子重置示例数据。该命令独立于正式 Release 流程，不创建版本号、标签、Release 或 APK；执行前必须确保工作区干净且 `main` 与 `origin/main` 一致。命令会删除公开 Demo 中的临时内容。
+
 ## 组件复用与造轮子约束
 
 UI 功能应尽量复用 `shadcn/ui` 等现有 UI 组件。在实现其他功能时，也应优先采用成熟、稳定的开源组件或库，绝对禁止在没有充分必要性的前提下自行从零造轮子。
