@@ -665,9 +665,9 @@ export const enUS = {
     subtitle: "AI Agent powered migration that preserves notebook stack hierarchy",
   },
   evernoteImport: {
-    title: "Import Evernote",
-    guide: "Guide",
-    openGuideAria: "Open Evernote migration guide in a new tab",
+    title: "Import Evernote, Notion, and Memos",
+    guide: "View migration guide",
+    openGuideAria: "Open the Evernote migration guide in a new tab",
     description: "Review the steps for migrating from Evernote to EdgeEver. MCP and AI Agent batch import are recommended.",
   },
   session: {
